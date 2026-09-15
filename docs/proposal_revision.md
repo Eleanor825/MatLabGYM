@@ -41,7 +41,7 @@ Long-horizon planning
 - ScienceWorld、ChemGymRL、DISCOVERYWORLD、Science-Gym、ALFWorld、RoboCasa、LIBERO、ScienceAgentBench 和 DiscoveryBench 的公开论文或官方仓库；
 - `https://github.com/Eleanor825/MatLabGYM` 的远程仓库状态。
 
-飞书链接在当前环境要求登录，无法读取在线批注；三份 PDF 中可提取到的是正文和超链接，没有独立的 PDF comment/annotation 对象。因此以下“结合 comment”指结合用户提供的子文档中已经写入的修订方向；如果飞书还有未导出的批注，建议在合并前按第 11 节的“待确认项”逐条回填。
+本次已通过飞书 MCP 读取主文档的 7 条未解决批注；三个子文档当前没有独立批注。批注集中在：成本/时间/通量与 reset 参数、episode/workspace 隔离和防作弊、multi-agent 是否必要、预测模型能否作为 skill、curriculum 与 harness/skills 自进化、业务方参与 skill registry、Ray 并发以及“环境简单、task 复杂”的第一版策略。以下建议逐条回应这些意见，并把仍需业务方确认的事项列在第 14 节。
 
 仓库审计结果：`MatLabGYM` 是公开但完全空的仓库，没有可保留的源码、入口、依赖、测试或 CI。因此本建议把实现视为 greenfield，并把初始 scaffold 作为 M0 交付，而不是假设已有能力。
 

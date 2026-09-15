@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "matlabgym"
+version = "0.1.0"
+description = "A reproducible, verifiable environment for materials-science agents"
+readme = "README.md"
+requires-python = ">=3.9"
+authors = [{name = "MatLabGYM contributors"}]
+license = {text = "MIT"}
+dependencies = []
+
+[project.scripts]
+matlabgym-demo = "matlabgym.demo:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

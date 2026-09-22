@@ -1,15 +1,41 @@
 # MatLabGYM
 
-MatLabGYM is a reproducible environment for evaluating scientific agents on materials-research decisions. The project is intentionally built as a greenfield scaffold: the public repository was empty at project start, so this first release establishes the contracts, a deterministic demo oracle, an auditable trace format, and tests before adding model training or real-lab connectivity.
+MatLabGYM is a verifiable environment framework for materials-research agents. It combines a hardware-independent protocol layer, platform compilation, deterministic asynchronous execution, and a Gym-style episode interface.
 
-## What this first release proves
+Version `0.2` includes a runnable six-stage electrolyte production-line simulation based on the internal `MATLABGYM LAB` interface template:
 
-The demo separates two capabilities that should not be conflated:
+```text
+mix electrolyte
+  -> characterize
+  -> inject and first seal
+  -> formation and capacity
+  -> second fill and degas
+  -> test
+```
 
-1. **Planning layer**: can an agent execute a long workflow while respecting state preconditions and resource limits?
-2. **Decision layer**: after an experiment reveals evidence, can an agent choose the next candidate under a finite budget?
+## Design
 
-The built-in electrolyte oracle is an analytic fixture for smoke tests only. It is not a real conductivity model and must not be used as a scientific result. The production path is a versioned replay table or a validated physics/real-lab adapter implementing the same `OutcomeOracle` protocol.
+The execution architecture is inspired by the separation used in the chemical description language χDL:
+
+```text
+hardware-independent Protocol
+  -> ProtocolCompiler
+  -> platform-bound CompiledProtocol
+  -> LabRuntime / real-lab adapter
+  -> artifact lineage + trace
+  -> LabGymEnv + configurable reward
+```
+
+MatLabGYM implements its own small, dependency-free contracts. It does not copy or import the official χDL implementation, which is AGPL-3.0 licensed. The paper has no official GitHub repository; the maintained implementation is the Cronin Group's [official GitLab repository](https://gitlab.com/croningroup/chemputer/xdl).
+
+The framework keeps four concepts separate:
+
+- **Operation/tool**: one controllable platform operation with typed parameters, input/output artifacts, preconditions, resource requirements, duration, cost, and interruptibility.
+- **Skill**: an atomic multi-operation protocol. Intermediate execution is visible in provenance but cannot be controlled by the agent.
+- **Runtime**: owns the logical clock, load-aware resource binding, sample locks, jobs, costs, artifact IDs, lineage, request idempotency, and failure codes.
+- **Reward**: a versioned benchmark configuration. It is intentionally not scientific ground truth and can be replaced without changing the environment dynamics.
+
+See [Framework Architecture](docs/framework.md) for the complete contracts and extension path.
 
 ## Quick start
 
@@ -17,69 +43,154 @@ The built-in electrolyte oracle is an analytic fixture for smoke tests only. It 
 cd MatLabGYM
 python3 -m venv .venv
 source .venv/bin/activate
+python -m pip install --upgrade pip
 python -m pip install -e .
+
 python -m matlabgym.demo --seed 7
+python examples/run_electrolyte_line.py
 python -m unittest discover -s tests -v
 ```
 
-No API key, GPU, database, or external service is required for the smoke test.
+No API key, GPU, database, or external service is required.
 
-## Architecture
+## Agent API
 
-```text
-TaskSpec
-  -> agent Action
-  -> schema / precondition validator
-  -> state transition engine
-  -> OutcomeOracle (replay | physics | hybrid | real lab)
-  -> Observation + task reward
-  -> JSON-serialisable trace and evaluator
+`LabGymEnv.reset` follows the modern Gymnasium return shape without requiring Gymnasium:
+
+```python
+observation, info = env.reset(seed=7)
+result = env.step(action)
 ```
 
-The scientific outcome is kept separate from reward. This lets us report `best_found`, `simple_regret`, `experiments_to_target`, validity, cost, and reproducibility without pretending that a hand-written scalar reward is ground truth.
+The environment accepts five commands:
 
-## Current contracts
+| Command | Purpose |
+| --- | --- |
+| `start_operation` | Start one registered tool operation. |
+| `start_skill` | Start an atomic multi-step skill. |
+| `stop_job` | Stop a running interruptible tool. |
+| `advance_time` | Advance deterministic logical time and complete due jobs. |
+| `poll` | Read state without advancing time. |
 
-- `TaskSpec`: task id, goal, budget, maximum steps, target and version.
-- `Action`: name plus JSON-compatible parameters.
-- `Observation`: public state and available action catalogue.
-- `StepResult`: observation, reward, termination flags, and structured info.
-- `OutcomeOracle`: `measure(candidate, condition)` and `candidates()`.
-- `trace()`: before-state, action, after-state, endpoint, failure reason, outcome, and reward.
+Start an operation:
 
-The decision demo implements a discrete experimental replay environment. Results are hidden until the agent selects a candidate. Repeating a measurement is rejected and does not consume budget. The planning demo implements a five-stage cell workflow and rejects `cycle` before `formation`, demonstrating that success is based on executable state transitions rather than exact matching a single reference plan.
+```python
+from matlabgym import Action, build_electrolyte_line_env
 
-## Data and adapter path
+env = build_electrolyte_line_env()
+observation, info = env.reset(seed=7)
 
-To connect audited historical data, use `CSVReplayOracle.from_csv()` with:
-
-```text
-formulation_id,temperature_c,conductivity_ms_cm,uncertainty_ms_cm,source
-E01,30,10.4,0.2,lab-run-2026-01
+result = env.step(Action("start_operation", {
+    "operation_id": "mix_electrolyte",
+    "request_id": "mix-001",
+    "parameters": {
+        "recipe": {"components": [
+            {"material": "EC", "fraction": 0.3},
+            {"material": "EMC", "fraction": 0.7}
+        ]},
+        "batch_size_ml": 20.0
+    }
+}))
 ```
 
-Only rows present in the replay table are queryable. If a condition was never measured, the environment must return an explicit missing-outcome error; it must not invent a value. A future `PyCalphadOracle`, `PyBaMMOracle`, or `RealLabAdapter` should preserve the same boundary and record database/model version, calibration range, runtime, and provenance.
+A successful start returns a job ID, logical completion time, incremental cost, and episode total cost. A failed start returns a stable `failure_code`, reason, and retryability flag. Mutating commands (`start_operation`, `start_skill`, `advance_time`, and `stop_job`) are idempotent by `request_id`: an identical retry returns `replayed: true` without changing state, charging cost, or assigning reward again; reuse for a different request is rejected.
 
-## Evaluation protocol proposed for the next release
+## Tool and skill execution
 
-- Freeze train/dev/test task manifests and hidden seeds.
-- Run random, greedy, Bayesian-optimization, and scripted baselines before RL.
-- Report mean and standard deviation over pre-registered seeds.
-- Separate `plan`, `dispatch`, `start`, and `completed` endpoints; dispatch is not execution.
-- Add perturbation tracks for missing observations, delayed results, tool failures, unit changes, and invalid actions.
-- Never expose the evaluator, hidden outcomes, or test-task generator to an evolving proposer.
+The bundled `run_electrolyte_cell_line` skill executes all six stages atomically:
 
-The detailed, section-by-section revision plan is in [`docs/proposal_revision.md`](docs/proposal_revision.md). It maps the main proposal and all three supplied subdocuments to an implementable M0-M4 roadmap, including the evidence boundaries for replay, physics, hybrid, and real-lab backends.
+```python
+accepted = env.step(Action("start_skill", {
+    "skill_id": "run_electrolyte_cell_line",
+    "request_id": "campaign-001",
+    "parameters_by_step": {
+        "mix": {
+            "recipe": {"components": [...]},
+            "batch_size_ml": 20.0
+        }
+    }
+}))
 
-## Scientific scope and limitations
+finished = env.step(Action("advance_time", {
+    "minutes": 905,
+    "request_id": "wait-001"
+}))
+```
 
-This repository currently contains no real laboratory integration, no calibrated electrolyte dataset, no PyCalphad database, no PyBaMM parameter set, and no trained agent. The fixture is an engineering demonstration of the contract and replay mechanics. It is deliberately safe to run locally and should be replaced by audited data before any scientific claim.
+Completion produces six episode-scoped artifacts with parent lineage and per-stage logical completion times, ending in a `cell_test_report`. Trying to stop the atomic skill returns `NOT_INTERRUPTIBLE`. Running stages as individual tools allows the environment to check each intermediate artifact and reject out-of-order execution.
+
+## Reward evolution
+
+Reward is supplied when the environment is constructed:
+
+```python
+from matlabgym.domains import build_electrolyte_line_env
+from matlabgym.lab import RewardSpec
+
+env = build_electrolyte_line_env(RewardSpec(
+    version="experiment-efficiency-v2",
+    completed=0.5,
+    invalid=-2.0,
+    goal=20.0,
+    cost_weight=0.01,
+    time_weight=0.001,
+))
+```
+
+The reward version and full configuration are included in the environment manifest. Construction validates the task, registry, platform, backend, schema, budget, reward specification, and reward implementation against that manifest, and the registry is frozen when the runtime is created. Agents may evolve policies, planners, skills, or harnesses against a fixed manifest. Changing reward creates a new benchmark version rather than silently changing an active evaluation.
+
+## Existing environments
+
+- `PlanningEnv`: deterministic five-stage workflow fixture retained for API compatibility.
+- `ElectrolyteReplayEnv`: discrete conductivity replay/fixture environment for evidence-driven decisions.
+- `LabGymEnv`: protocol compiler and asynchronous execution framework.
+- `build_electrolyte_line_env`: executable orchestration reference for the six-stage interface template.
+
+## Verification guarantees
+
+The current tests cover:
+
+- valid end-to-end skill execution;
+- out-of-order artifact rejection;
+- tool stop and atomic-skill stop rejection;
+- resource and parameter validation;
+- idempotent request IDs;
+- compiled-plan integrity and stale-manifest rejection;
+- source-protocol attestation for externally submitted plans;
+- finite time inputs and hard episode deadlines;
+- sample locking, consumption, and collision-free IDs;
+- observation and trace isolation from caller mutation;
+- load-aware selection across equivalent resources;
+- deep-copy isolation for submitted nested parameters;
+- cross-episode artifact isolation;
+- configurable reward versions;
+- compiler rejection of type-incompatible protocol chains;
+- deterministic replay behavior of the earlier decision environment.
+
+The runtime emits deterministic event logs and the environment emits transition traces. They are audit inputs; a generic trace replay/verifier is not part of version `0.2`.
+
+## Real-lab adapter boundary
+
+The deterministic runtime is a reference backend. A production adapter should preserve the same public result schema while mapping:
+
+```text
+submit_plan   -> scheduler/API dispatch
+poll          -> external job status
+stop_job      -> platform-supported cancellation
+artifact_id   -> laboratory sample/result ID
+logical ETA   -> observed/configured ETA with source metadata
+cost          -> observed/configured/proxy value with explicit units
+```
+
+Real execution must keep `accepted`, `dispatched`, `started`, and `completed` distinct. A dispatch acknowledgement is not evidence that an experiment started or produced a valid scientific outcome.
+
+## Scientific scope
+
+The repository still contains no production laboratory connector or calibrated materials-performance model. The six-stage line validates platform contracts and orchestration, not electrolyte chemistry. The analytic conductivity fixture remains a smoke-test oracle and must not support scientific claims.
 
 ## References
 
-- Guo et al., *Stress-testing large language model agents in a robotic chemistry laboratory*, arXiv:2607.23045, 2026. https://arxiv.org/abs/2607.23045
-- Wang et al., *ScienceWorld: Is your Agent Smarter than a 5th Grader?*, EMNLP 2022. https://aclanthology.org/2022.emnlp-main.775/
+- Rauschen et al., *Universal chemical programming language for robotic synthesis repeatability*, Nature Synthesis 3, 488-496 (2024). https://doi.org/10.1038/s44160-023-00473-6
+- Cronin Group, χDL official repository. https://gitlab.com/croningroup/chemputer/xdl
+- Guo et al., *Stress-testing large language model agents in a robotic chemistry laboratory*, 2026. https://arxiv.org/abs/2607.23045
 - Beeler et al., *ChemGymRL: A customizable interactive framework for reinforcement learning for digital chemistry*, Digital Discovery 2024. https://doi.org/10.1039/d3dd00183k
-- Jansen et al., *DISCOVERYWORLD*, NeurIPS Datasets and Benchmarks 2024. https://arxiv.org/abs/2406.06769
-- Cerrato et al., *Science-Gym: a simple testbed for AI-driven scientific discovery*, Machine Learning 2026. https://doi.org/10.1007/s10994-025-06914-x
-- Dave et al., *Autonomous optimization of non-aqueous Li-ion battery electrolytes via robotic experimentation and machine learning coupling*, Nature Communications 2022. https://doi.org/10.1038/s41467-022-32938-1

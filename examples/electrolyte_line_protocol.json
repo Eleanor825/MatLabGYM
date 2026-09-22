@@ -1,0 +1,16 @@
+{
+  "skill_id": "run_electrolyte_cell_line",
+  "request_id": "campaign-001",
+  "parameters_by_step": {
+    "mix": {
+      "recipe": {
+        "components": [
+          {"material": "EC", "fraction": 0.3},
+          {"material": "EMC", "fraction": 0.7},
+          {"material": "LiPF6", "concentration_m": 1.0}
+        ]
+      },
+      "batch_size_ml": 20.0
+    }
+  }
+}

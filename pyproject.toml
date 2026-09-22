@@ -1,16 +1,20 @@
 [build-system]
-requires = ["setuptools>=68"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "matlabgym"
-version = "0.1.0"
+version = "0.2.0"
 description = "A reproducible, verifiable environment for materials-science agents"
 readme = "README.md"
 requires-python = ">=3.9"
 authors = [{name = "MatLabGYM contributors"}]
-license = {text = "MIT"}
+license = "MIT"
 dependencies = []
+
+[project.optional-dependencies]
+gym = ["gymnasium>=0.29"]
+dev = ["pytest>=8", "ruff>=0.6"]
 
 [project.scripts]
 matlabgym-demo = "matlabgym.demo:main"
@@ -20,3 +24,10 @@ where = ["src"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.ruff]
+target-version = "py39"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "B", "I"]

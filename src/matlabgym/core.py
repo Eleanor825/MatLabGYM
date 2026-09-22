@@ -8,7 +8,7 @@ physics, hybrid, or real-lab adapter without changing the agent-facing API.
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
-from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
+from typing import Any, Dict, Mapping, Optional, Sequence, Tuple
 
 
 @dataclass(frozen=True)

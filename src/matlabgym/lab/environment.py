@@ -7,6 +7,13 @@ import json
 from collections.abc import Mapping
 from typing import Any, Dict, List, Optional, Tuple
 
+from ..benchmark import (
+    EndpointEvidence,
+    EndpointName,
+    FunnelSummary,
+    TrialEndpoints,
+    failure_category,
+)
 from ..core import Action, Observation, StepResult
 from .contracts import (
     EnvironmentManifest,
@@ -113,6 +120,45 @@ class LabGymEnv:
         except (TypeError, ValueError):
             safe_parameters = {"_invalid_payload": True}
         return {"name": str(action.name), "parameters": safe_parameters}
+
+    @staticmethod
+    def _endpoint_evidence(results: Tuple[OperationResult, ...]) -> Tuple[EndpointEvidence, ...]:
+        statuses = {result.status for result in results}
+        artifacts = tuple(
+            artifact_id for result in results for artifact_id in result.produced_artifact_ids
+        )
+        return (
+            EndpointEvidence(
+                EndpointName.PLAN_MATERIALIZED,
+                bool({"accepted", "completed"} & statuses),
+                "deterministic_compiler",
+                artifacts,
+            ),
+            EndpointEvidence(
+                EndpointName.DISPATCH_VERIFIED,
+                bool({"accepted", "completed"} & statuses),
+                "deterministic_resource_reservation",
+                artifacts,
+            ),
+            EndpointEvidence(
+                EndpointName.STARTED,
+                False,
+                "not_claimed_by_simulator",
+                reason="logical running state is not physical start evidence",
+            ),
+            EndpointEvidence(
+                EndpointName.COMPLETED,
+                "completed" in statuses,
+                "deterministic_completion",
+                artifacts,
+            ),
+            EndpointEvidence(
+                EndpointName.SCIENTIFICALLY_VALIDATED,
+                False,
+                "no_registered_scientific_oracle",
+                reason="execution scaffold does not validate a scientific outcome",
+            ),
+        )
 
     def reset(
         self,
@@ -262,10 +308,16 @@ class LabGymEnv:
             self.truncated = not goal_reached
 
         reward = self.reward_model(results, elapsed, goal_reached)
+        endpoint_evidence = self._endpoint_evidence(results)
+        failure_code = next(
+            (result.failure_code for result in results if result.failure_code), None
+        )
         self.last_outcome = {
             "results": [result.to_dict() for result in results],
             "goal_reached": goal_reached,
             "state_hash": self.runtime.state_hash,
+            "endpoint_evidence": [item.to_dict() for item in endpoint_evidence],
+            "failure_category": failure_category(failure_code),
         }
         after = self.runtime.snapshot()
         self._trace.append(
@@ -277,6 +329,8 @@ class LabGymEnv:
                 "action": self._trace_action(action, parameters),
                 "after": after,
                 "results": [result.to_dict() for result in results],
+                "endpoint_evidence": [item.to_dict() for item in endpoint_evidence],
+                "failure_category": failure_category(failure_code),
                 "reward": reward,
                 "terminated": self.terminated,
                 "truncated": self.truncated,
@@ -290,8 +344,48 @@ class LabGymEnv:
             "total_cost": self.runtime.total_cost,
             "logical_time_min": self.runtime.clock_min,
             "reward_version": self.manifest.reward.version,
+            "endpoint_evidence": [item.to_dict() for item in endpoint_evidence],
+            "failure_category": failure_category(failure_code),
         }
         return StepResult(self.observe(), reward, self.terminated, self.truncated, info)
 
     def trace(self) -> List[Dict[str, Any]]:
         return copy.deepcopy(self._trace)
+
+    def endpoint_funnel(self) -> Dict[str, Any]:
+        if not self._trace:
+            return FunnelSummary.from_trials([]).to_dict()
+        merged = {}
+        failure_category_value = None
+        for event in self._trace:
+            for item in event.get("endpoint_evidence", []):
+                endpoint = item["endpoint"]
+                previous = merged.get(endpoint)
+                merged[endpoint] = {
+                    "endpoint": endpoint,
+                    "present": bool(item["present"]) or bool(previous and previous["present"]),
+                    "evidence_source": item["evidence_source"],
+                    "artifact_refs": list(
+                        set((previous or {}).get("artifact_refs", []))
+                        | set(item.get("artifact_refs") or [])
+                    ),
+                    "reason": item.get("reason"),
+                }
+            failure_category_value = event.get("failure_category") or failure_category_value
+        trials = [
+            TrialEndpoints(
+                trial_id=self.episode_id,
+                evidence=tuple(
+                    EndpointEvidence(
+                        EndpointName(item["endpoint"]),
+                        bool(item["present"]),
+                        str(item["evidence_source"]),
+                        tuple(item.get("artifact_refs") or ()),
+                        item.get("reason"),
+                    )
+                    for item in merged.values()
+                ),
+                failure_category=failure_category_value,
+            )
+        ]
+        return FunnelSummary.from_trials(trials).to_dict()

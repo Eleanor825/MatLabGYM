@@ -36,6 +36,7 @@ The framework keeps four concepts separate:
 - **Reward**: a versioned benchmark configuration. It is intentionally not scientific ground truth and can be replaced without changing the environment dynamics.
 
 See [Framework Architecture](docs/framework.md) for the complete contracts and extension path.
+See [Literature Traceability](docs/literature_traceability.md) for the paper-to-contract audit and the current paper-readiness boundary.
 
 ## Quick start
 
@@ -166,8 +167,23 @@ The current tests cover:
 - configurable reward versions;
 - compiler rejection of type-incompatible protocol chains;
 - deterministic replay behavior of the earlier decision environment.
+- fail-closed benchmark admission, sparse measured-support replay and replicate handling;
+- endpoint evidence aggregation across a complete episode;
+- full deterministic replay verification with required provenance fields.
 
-The runtime emits deterministic event logs and the environment emits transition traces. They are audit inputs; a generic trace replay/verifier is not part of version `0.2`.
+The runtime emits deterministic event logs and the environment emits transition traces. They are audit artifacts for the deterministic verifier described below.
+
+Version `0.2` now includes a deterministic full-trace verifier in
+`matlabgym.replay`. It compares manifest, before/after public state, result
+payload, endpoint evidence, reward, terminal flags and state hash. It is valid
+for this deterministic backend only; it is not evidence of physical start,
+scientific validation, or a LabBench reproduction.
+
+The benchmark contracts in `matlabgym.benchmark` are fail-closed metadata and
+admission scaffolding: `OracleCard`, grouped `DatasetSplit`, `StressSuite`,
+`BenchmarkManifest`, endpoint records and bootstrap summaries. The bundled
+stress suite has no perturbation executor, the fixture has no calibrated
+scientific oracle, and no scientific benchmark claim is admitted by default.
 
 ## Real-lab adapter boundary
 
@@ -187,6 +203,12 @@ Real execution must keep `accepted`, `dispatched`, `started`, and `completed` di
 ## Scientific scope
 
 The repository still contains no production laboratory connector or calibrated materials-performance model. The six-stage line validates platform contracts and orchestration, not electrolyte chemistry. The analytic conductivity fixture remains a smoke-test oracle and must not support scientific claims.
+
+The current implementation is an execution-only substrate. It does not claim
+to reproduce the robotic-chemistry stress test, its 45-workstation corpus,
+4,608-trial matrix, expert executable labels, or physical deployment results.
+The literature-to-contract audit and the remaining gates are recorded in
+[`docs/literature_traceability.md`](docs/literature_traceability.md).
 
 ## References
 

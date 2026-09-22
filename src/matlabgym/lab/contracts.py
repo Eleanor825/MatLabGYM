@@ -475,6 +475,7 @@ class OperationResult:
     failure_reason: Optional[str] = None
     retryable: bool = False
     replayed: bool = False
+    endpoint: Optional[str] = None
 
     def to_dict(self) -> JsonDict:
         return asdict(self)
@@ -535,13 +536,30 @@ class EnvironmentManifest:
     reward: RewardSpec
     backend: str = "deterministic-simulator"
     schema_version: str = "1.0"
+    oracle_card_hash: str = "unregistered"
+    evaluator_version: str = "execution-only-v1"
+    success_predicate_hash: str = "execution-goal-v1"
+    safety_policy_hash: str = "execution-safety-v1"
+    split_hash: str = "unregistered"
+    stress_suite_hash: str = "unregistered"
 
     def __post_init__(self) -> None:
         if not isinstance(self.task, LabTaskSpec):
             raise ValueError("task must be a LabTaskSpec")
         if not isinstance(self.reward, RewardSpec):
             raise ValueError("reward must be a RewardSpec")
-        for name in ("registry_hash", "platform_hash", "backend", "schema_version"):
+        for name in (
+            "registry_hash",
+            "platform_hash",
+            "backend",
+            "schema_version",
+            "oracle_card_hash",
+            "evaluator_version",
+            "success_predicate_hash",
+            "safety_policy_hash",
+            "split_hash",
+            "stress_suite_hash",
+        ):
             _require_identifier(name, getattr(self, name))
 
     def to_dict(self) -> JsonDict:
@@ -552,6 +570,12 @@ class EnvironmentManifest:
             "reward": self.reward.to_dict(),
             "backend": self.backend,
             "schema_version": self.schema_version,
+            "oracle_card_hash": self.oracle_card_hash,
+            "evaluator_version": self.evaluator_version,
+            "success_predicate_hash": self.success_predicate_hash,
+            "safety_policy_hash": self.safety_policy_hash,
+            "split_hash": self.split_hash,
+            "stress_suite_hash": self.stress_suite_hash,
         }
 
     @property

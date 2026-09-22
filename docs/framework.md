@@ -16,7 +16,7 @@ The χDL paper separates a portable procedure from a platform graph and compilat
 | Blueprint/high-level step | `SkillSpec` | Reusable atomic multi-operation protocol. |
 | Compilation | `ProtocolCompiler` | Validate chains and bind concrete resources. |
 | Platform executor | `LabRuntime` | Async jobs, logical time, locking and artifacts. |
-| Execution trace | runtime events + env trace | Audit evidence and inputs for a future replay verifier. |
+| Execution trace | runtime events + env trace | Audit evidence for the deterministic replay verifier. |
 | Not defined by χDL | `LabGymEnv` | Episode isolation, reward and termination. |
 
 The official χDL code is not embedded because it is AGPL-3.0 and targets chemical synthesis hardware. An adapter can be added later behind the compiler/runtime boundary.
@@ -117,6 +117,20 @@ fixed environment dynamics + fixed reward version
 
 Environment and reward evolution are outer-loop changes and must create new versioned manifests.
 
+### Benchmark admission boundary
+
+`matlabgym.benchmark` contains the paper-facing contracts for an `OracleCard`,
+grouped dataset split, registered perturbation suite, endpoint evidence and a
+composite `BenchmarkManifest`. These are intentionally fail-closed. A manifest
+cannot be admitted as a scientific benchmark unless the oracle is marked
+validated, the split hashes match, every perturbation operator is implemented,
+and the claim status is explicitly `scientific_benchmark`.
+
+The bundled electrolyte line does not satisfy that gate. Its default manifest
+uses `unregistered` oracle/split/stress hashes and `execution_only` semantics.
+This is correct for a contract scaffold and prevents an execution demo from
+being reported as a materials result.
+
 ## Extension pipeline
 
 1. Inventory real operations, start/stop support, resources, capacities, units, costs, and failure codes.
@@ -137,4 +151,10 @@ Environment and reward evolution are outer-loop changes and must create new vers
 - Stop currently has `stopped` semantics without resume or partial-product recovery.
 - Durations and costs are configured proxy values. They are not observed laboratory measurements.
 - Hidden evaluators require process/storage isolation in a formal benchmark deployment.
-- Runtime events and transition traces are exported, but version `0.2` does not yet include a generic replay verifier.
+- `matlabgym.replay.verify_trace` verifies deterministic traces by comparing
+  manifest, before/after snapshots, result payloads, endpoint evidence, rewards,
+  terminal flags and state hashes. It is not a stochastic replay engine and it
+  does not prove physical start or scientific validity.
+- The current stress suite is declarative metadata only; perturbation operators,
+  paired stress runs, hidden holdouts and adversarial sandboxing remain future
+  work.

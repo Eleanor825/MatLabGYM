@@ -118,6 +118,7 @@ class LabRuntime:
             failure_code=code.value,
             failure_reason=reason,
             retryable=retryable,
+            endpoint=None,
         )
         self._record_event("rejected", result.to_dict())
         return result
@@ -160,6 +161,7 @@ class LabRuntime:
             incremental_cost=0.0,
             total_cost=self.total_cost,
             replayed=True,
+            endpoint="completed" if job.status is JobStatus.COMPLETED else "dispatch_verified",
         )
 
     def _control_replay_or_conflict(
@@ -499,6 +501,7 @@ class LabRuntime:
             estimated_completion_min=job.estimated_completion_min,
             incremental_cost=plan.total_cost,
             total_cost=self.total_cost,
+            endpoint="dispatch_verified",
         )
         self._record_event("accepted", {"result": result.to_dict(), "plan": plan.to_dict()})
         return result
@@ -587,6 +590,7 @@ class LabRuntime:
             produced_artifact_ids=tuple(produced),
             estimated_completion_min=job.estimated_completion_min,
             total_cost=self.total_cost,
+            endpoint="completed",
         )
         self._record_event("completed", result.to_dict())
         return result
@@ -630,6 +634,7 @@ class LabRuntime:
                 request_id=request_id,
                 job_id=job_id,
                 total_cost=self.total_cost,
+                endpoint="stopped",
             )
             self._record_event("stopped", result.to_dict())
         self._remember_control(request_id, request_hash, (result,))

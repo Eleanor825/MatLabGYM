@@ -22,12 +22,12 @@ from .core import Action, Observation, StepResult, TaskSpec, action_catalog
 @dataclass(frozen=True)
 class Formulation:
     formulation_id: str
-    ec: float
-    pc: float
-    emc: float
-    salt_m: float
+    ec: Optional[float]
+    pc: Optional[float]
+    emc: Optional[float]
+    salt_m: Optional[float]
 
-    def to_dict(self) -> Dict[str, Union[float, str]]:
+    def to_dict(self) -> Dict[str, Union[float, str, None]]:
         return {
             "formulation_id": self.formulation_id,
             "ec": self.ec,
@@ -42,10 +42,10 @@ class Measurement:
     formulation_id: str
     temperature_c: int
     conductivity_ms_cm: float
-    uncertainty_ms_cm: float
+    uncertainty_ms_cm: Optional[float]
     source: str
 
-    def to_dict(self) -> Dict[str, Union[float, int, str]]:
+    def to_dict(self) -> Dict[str, Union[float, int, str, None]]:
         return {
             "formulation_id": self.formulation_id,
             "temperature_c": self.temperature_c,
@@ -64,6 +64,9 @@ class OutcomeOracle:
     def candidates(self) -> Sequence[Formulation]:
         raise NotImplementedError
 
+    def supported_actions(self) -> Sequence[Tuple[str, int]]:
+        raise NotImplementedError
+
 
 class FixtureElectrolyteOracle(OutcomeOracle):
     """Deterministic analytic fixture used only for local smoke tests."""
@@ -74,6 +77,9 @@ class FixtureElectrolyteOracle(OutcomeOracle):
 
     def candidates(self) -> Sequence[Formulation]:
         return tuple(self._formulations.values())
+
+    def supported_actions(self) -> Sequence[Tuple[str, int]]:
+        return tuple((formulation.formulation_id, 30) for formulation in self.candidates())
 
     def measure(self, formulation_id: str, temperature_c: int) -> Measurement:
         try:
@@ -102,21 +108,50 @@ class CSVReplayOracle(OutcomeOracle):
     ``conductivity_ms_cm``.  ``uncertainty_ms_cm`` and ``source`` are optional.
     """
 
-    def __init__(self, rows: Iterable[Mapping[str, str]], source: str = "csv-replay"):
+    def __init__(
+        self,
+        rows: Iterable[Mapping[str, str]],
+        source: str = "csv-replay",
+        duplicate_policy: str = "error",
+    ):
+        if duplicate_policy not in {"error", "first"}:
+            raise ValueError("duplicate_policy must be 'error' or 'first'")
         self.source = source
         self._rows: Dict[Tuple[str, int], Measurement] = {}
+        self._replicates: Dict[Tuple[str, int], List[Measurement]] = {}
         self._formulations: Dict[str, Formulation] = {}
         for row in rows:
             key = (str(row["formulation_id"]), int(float(row["temperature_c"])))
-            self._rows[key] = Measurement(
+            uncertainty_text = str(row.get("uncertainty_ms_cm", "")).strip()
+            measurement = Measurement(
                 formulation_id=key[0],
                 temperature_c=key[1],
                 conductivity_ms_cm=float(row["conductivity_ms_cm"]),
-                uncertainty_ms_cm=float(row.get("uncertainty_ms_cm", "nan")),
+                uncertainty_ms_cm=float(uncertainty_text) if uncertainty_text else None,
                 source=str(row.get("source", source)),
             )
+            if key in self._rows:
+                if duplicate_policy == "error":
+                    raise ValueError("duplicate replay key: %s" % (key,))
+                self._replicates.setdefault(key, [self._rows[key]])
+                self._replicates[key].append(measurement)
+                continue
+            self._rows[key] = measurement
             if key[0] not in self._formulations:
-                self._formulations[key[0]] = Formulation(key[0], float("nan"), float("nan"), float("nan"), float("nan"))
+
+                def optional_float(
+                    name: str, source_row: Mapping[str, str] = row
+                ) -> Optional[float]:
+                    text = str(source_row.get(name, "")).strip()
+                    return float(text) if text else None
+
+                self._formulations[key[0]] = Formulation(
+                    key[0],
+                    optional_float("ec"),
+                    optional_float("pc"),
+                    optional_float("emc"),
+                    optional_float("salt_m"),
+                )
 
     @classmethod
     def from_csv(cls, path: Union[str, Path], source: str = "csv-replay") -> "CSVReplayOracle":
@@ -125,6 +160,15 @@ class CSVReplayOracle(OutcomeOracle):
 
     def candidates(self) -> Sequence[Formulation]:
         return tuple(self._formulations.values())
+
+    def supported_actions(self) -> Sequence[Tuple[str, int]]:
+        return tuple(sorted(self._rows))
+
+    def replicates(self, formulation_id: str, temperature_c: int) -> Sequence[Measurement]:
+        key = (formulation_id, temperature_c)
+        if key not in self._rows:
+            return ()
+        return tuple(self._replicates.get(key, [self._rows[key]]))
 
     def measure(self, formulation_id: str, temperature_c: int) -> Measurement:
         key = (formulation_id, temperature_c)
@@ -157,7 +201,9 @@ def make_fixture_task() -> Tuple[TaskSpec, FixtureElectrolyteOracle]:
 class ElectrolyteReplayEnv:
     """Gym-like replay environment with hidden outcomes and audit traces."""
 
-    def __init__(self, task: TaskSpec, oracle: OutcomeOracle, seed: int = 0, temperature_c: int = 30):
+    def __init__(
+        self, task: TaskSpec, oracle: OutcomeOracle, seed: int = 0, temperature_c: int = 30
+    ):
         self.task = task
         self.oracle = oracle
         self.seed = seed
@@ -182,10 +228,15 @@ class ElectrolyteReplayEnv:
 
     def available_actions(self) -> List[Action]:
         actions = []
-        for formulation in self.oracle.candidates():
-            key = (formulation.formulation_id, self.temperature_c)
-            if key not in self.measured:
-                actions.append(Action("measure_conductivity", {"formulation_id": formulation.formulation_id, "temperature_c": self.temperature_c}))
+        for formulation_id, temperature_c in self.oracle.supported_actions():
+            key = (formulation_id, temperature_c)
+            if key not in self.measured and temperature_c == self.temperature_c:
+                actions.append(
+                    Action(
+                        "measure_conductivity",
+                        {"formulation_id": formulation_id, "temperature_c": temperature_c},
+                    )
+                )
         return actions
 
     def observe(self) -> Observation:
@@ -195,7 +246,11 @@ class ElectrolyteReplayEnv:
             "goal": self.task.goal,
             "candidates": public_candidates,
             "measured_keys": [list(k) for k in sorted(self.measured)],
-            "best_so_far_ms_cm": self.best_measurement.conductivity_ms_cm if self.best_measurement else None,
+            "best_so_far_ms_cm": self.best_measurement.conductivity_ms_cm
+            if self.best_measurement
+            else None,
+            "support_size": len(self.oracle.supported_actions()),
+            "support_mask": [list(item) for item in self.oracle.supported_actions()],
         }
         return Observation(
             step=self.step_count,
@@ -224,13 +279,21 @@ class ElectrolyteReplayEnv:
                 raise ValueError("measurement already consumed")
             measurement = self.oracle.measure(formulation_id, temperature_c)
             self.measured[key] = measurement
-            if self.best_measurement is None or measurement.conductivity_ms_cm > self.best_measurement.conductivity_ms_cm:
+            if (
+                self.best_measurement is None
+                or measurement.conductivity_ms_cm > self.best_measurement.conductivity_ms_cm
+            ):
                 self.best_measurement = measurement
             self.budget_remaining -= 1
             self.step_count += 1
-            info.update({"valid": True, "measurement": measurement.to_dict(), "endpoint": "completed"})
+            info.update(
+                {"valid": True, "measurement": measurement.to_dict(), "endpoint": "completed"}
+            )
             reward = measurement.conductivity_ms_cm / (self.task.required_target or 1.0)
-            if self.task.required_target is not None and measurement.conductivity_ms_cm >= self.task.required_target:
+            if (
+                self.task.required_target is not None
+                and measurement.conductivity_ms_cm >= self.task.required_target
+            ):
                 self.terminated = True
                 info["success"] = True
                 reward += 1.0
@@ -246,7 +309,15 @@ class ElectrolyteReplayEnv:
                 self.truncated = True
         self.last_outcome = info
         after = self.observe().to_dict()
-        self._trace.append({"before": before, "action": action.to_dict(), "after": after, "info": dict(info), "reward": reward})
+        self._trace.append(
+            {
+                "before": before,
+                "action": action.to_dict(),
+                "after": after,
+                "info": dict(info),
+                "reward": reward,
+            }
+        )
         return StepResult(self.observe(), reward, self.terminated, self.truncated, info)
 
     def trace(self) -> List[Dict[str, object]]:
@@ -260,13 +331,23 @@ class ElectrolyteReplayEnv:
         return self.observe()
 
     def evaluate(self) -> Dict[str, object]:
-        all_measurements = [self.oracle.measure(f.formulation_id, self.temperature_c) for f in self.oracle.candidates()]
+        supported = [key for key in self.oracle.supported_actions() if key[1] == self.temperature_c]
+        all_measurements = [
+            self.oracle.measure(formulation_id, temperature_c)
+            for formulation_id, temperature_c in supported
+        ]
+        if not all_measurements:
+            raise ValueError(
+                "oracle has no supported outcomes at temperature %s" % self.temperature_c
+            )
         optimum = max(m.conductivity_ms_cm for m in all_measurements)
         best = self.best_measurement.conductivity_ms_cm if self.best_measurement else None
         target = self.task.required_target
         target_step = None
         for index, event in enumerate(self._trace, start=1):
-            if event["info"].get("valid") and event["info"].get("measurement", {}).get("conductivity_ms_cm", -math.inf) >= (target or math.inf):
+            if event["info"].get("valid") and event["info"].get("measurement", {}).get(
+                "conductivity_ms_cm", -math.inf
+            ) >= (target or math.inf):
                 target_step = index
                 break
         valid_count = sum(1 for event in self._trace if event["info"].get("valid"))
@@ -276,6 +357,7 @@ class ElectrolyteReplayEnv:
             "success": bool(target is not None and best is not None and best >= target),
             "best_found_ms_cm": best,
             "oracle_optimum_ms_cm": optimum,
+            "support_size": len(supported),
             "simple_regret_ms_cm": None if best is None else optimum - best,
             "experiments_to_target": target_step,
             "valid_action_rate": valid_count / len(self._trace) if self._trace else 0.0,

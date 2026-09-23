@@ -7,6 +7,7 @@ physics, hybrid, or real-lab adapter without changing the agent-facing API.
 
 from __future__ import annotations
 
+from copy import deepcopy
 from dataclasses import asdict, dataclass, field
 from typing import Any, Dict, Mapping, Optional, Sequence, Tuple
 
@@ -19,7 +20,7 @@ class Action:
     parameters: Mapping[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> Dict[str, Any]:
-        return {"name": self.name, "parameters": dict(self.parameters)}
+        return {"name": self.name, "parameters": deepcopy(dict(self.parameters))}
 
 
 @dataclass(frozen=True)
@@ -51,9 +52,11 @@ class Observation:
         return {
             "step": self.step,
             "budget_remaining": self.budget_remaining,
-            "available_actions": list(self.available_actions),
-            "public_state": dict(self.public_state),
-            "last_outcome": dict(self.last_outcome) if self.last_outcome else None,
+            "available_actions": deepcopy(list(self.available_actions)),
+            "public_state": deepcopy(dict(self.public_state)),
+            "last_outcome": deepcopy(dict(self.last_outcome))
+            if self.last_outcome is not None
+            else None,
         }
 
 
@@ -67,13 +70,17 @@ class StepResult:
     truncated: bool
     info: Mapping[str, Any]
 
+    def __iter__(self):
+        """Unpack as the Gymnasium five-tuple while retaining named fields."""
+        return iter((self.observation, self.reward, self.terminated, self.truncated, self.info))
+
     def to_dict(self) -> Dict[str, Any]:
         return {
             "observation": self.observation.to_dict(),
             "reward": self.reward,
             "terminated": self.terminated,
             "truncated": self.truncated,
-            "info": dict(self.info),
+            "info": deepcopy(dict(self.info)),
         }
 
 

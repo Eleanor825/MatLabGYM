@@ -17,58 +17,53 @@ from .core import Action, Observation
 Policy = Callable[[Observation], Optional[Action]]
 ScoreFn = Callable[[EpisodeOutcome], float]
 EnvFactory = Callable[[TrialSlot], Any]
+PolicyFactory = Callable[[TrialSlot], Policy]
 
 
 def _episode_outcome(env: Any, trace: Sequence[Mapping[str, Any]]) -> EpisodeOutcome:
-    endpoint_counts = {
-        "plan_materialized": 0,
-        "dispatch_verified": 0,
-        "completed": 0,
-        "started": 0,
-        "scientifically_validated": 0,
-    }
-    failure_categories = set()
-    artifact_refs = set()
-    total_reward = 0.0
-    for event in trace:
-        total_reward += float(event.get("reward", 0.0))
-        failure = event.get("failure_category")
-        if failure:
-            failure_categories.add(str(failure))
-        for item in event.get("endpoint_evidence", ()):
-            if item.get("present"):
-                endpoint_counts[str(item.get("endpoint"))] = 1
-            artifact_refs.update(item.get("artifact_refs") or ())
-    snapshot = env.runtime.snapshot()
-    goal_reached = any(
-        artifact.get("artifact_kind") == env.task.goal_output_kind
-        for artifact in snapshot.get("artifacts", {}).values()
-    )
-    return EpisodeOutcome(
-        logical_plan_materialized=bool(endpoint_counts["plan_materialized"]),
-        logical_dispatch_verified=bool(endpoint_counts["dispatch_verified"]),
-        logical_completed=bool(endpoint_counts["completed"]),
-        physical_started=False,
-        physical_completed=False,
-        scientifically_validated=bool(endpoint_counts["scientifically_validated"]),
-        goal_reached=goal_reached,
-        failure_categories=tuple(sorted(failure_categories)),
-        total_reward=total_reward,
-        logical_time_min=float(snapshot.get("clock_min", 0.0)),
-        total_cost=float(snapshot.get("total_cost", 0.0)),
-        artifact_refs=tuple(sorted(artifact_refs)),
-    )
+    outcome = env.episode_outcome()
+    if not isinstance(outcome, EpisodeOutcome):
+        raise TypeError("environment episode_outcome() must return EpisodeOutcome")
+    return outcome
+
+
+def _validate_policy_source(
+    policy: Optional[Policy], policy_factory: Optional[PolicyFactory]
+) -> None:
+    if (policy is None) == (policy_factory is None):
+        raise ValueError("provide exactly one of policy or policy_factory")
+    if not callable(policy if policy_factory is None else policy_factory):
+        raise TypeError("policy or policy_factory must be callable")
+
+
+def _validate_slot_environment(slot: TrialSlot, env: Any) -> None:
+    if slot.task_id != env.task.task_id:
+        raise ValueError("slot task_id does not match environment")
+    budget = env.budget_spec
+    if not isinstance(budget, Mapping):
+        raise TypeError("environment budget_spec must be a mapping")
+    for name, value in slot.budget_spec.items():
+        if name not in budget:
+            raise ValueError("unknown slot budget field: %s" % name)
+        if value != budget[name] or isinstance(value, bool) != isinstance(budget[name], bool):
+            raise ValueError("slot budget field %s does not match environment" % name)
 
 
 def run_trial(
     slot: TrialSlot,
     env_factory: EnvFactory,
-    policy: Policy,
+    policy: Optional[Policy] = None,
     *,
+    policy_factory: Optional[PolicyFactory] = None,
     score_fn: Optional[ScoreFn] = None,
     action_transform: Optional[Callable[[int, Action], Sequence[Action]]] = None,
 ) -> TrialOutcome:
-    """Execute one pre-registered slot and retain runner failures as outcomes."""
+    """Execute a slot, retaining failures; ``policy_factory(slot)`` creates its policy.
+
+    Direct ``policy`` remains supported for stateless callables. Stateful policies
+    should use the factory so each trial receives an independent instance.
+    """
+    _validate_policy_source(policy, policy_factory)
     status = "retained"
     failure_reason = None
     trace: Sequence[Mapping[str, Any]] = ()
@@ -77,9 +72,13 @@ def run_trial(
         _, reset_info = env.reset(seed=slot.seed)
         if reset_info.get("manifest_hash") != slot.benchmark_manifest_hash:
             raise ValueError("slot manifest hash does not match environment")
+        _validate_slot_environment(slot, env)
+        trial_policy = policy_factory(slot) if policy_factory is not None else policy
+        if not callable(trial_policy):
+            raise TypeError("policy_factory must return a callable policy")
         action_index = 0
         while not env.terminated and not env.truncated:
-            action = policy(env.observe())
+            action = trial_policy(env.observe())
             if action is None:
                 status = "unscorable"
                 failure_reason = "policy returned no action before termination"
@@ -134,8 +133,9 @@ def run_trial(
 def run_cohort(
     slots: Sequence[TrialSlot],
     env_factory: EnvFactory,
-    policy: Policy,
+    policy: Optional[Policy] = None,
     *,
+    policy_factory: Optional[PolicyFactory] = None,
     score_fn: Optional[ScoreFn] = None,
     evaluator_version: Optional[str] = None,
     bootstrap_samples: int = 2000,
@@ -147,6 +147,7 @@ def run_cohort(
     execution evidence from the environment, while an independent ``score_fn``
     may add a scientific evaluator once one is registered.
     """
+    _validate_policy_source(policy, policy_factory)
     if score_fn is not None and not evaluator_version:
         raise ValueError("custom score_fn requires an evaluator_version")
     if not slots:
@@ -166,7 +167,9 @@ def run_cohort(
     scorer = score_fn or (lambda outcome: 1.0 if outcome.goal_reached else 0.0)
     outcomes: List[TrialOutcome] = []
     for slot in slots:
-        outcomes.append(run_trial(slot, env_factory, policy, score_fn=scorer))
+        outcomes.append(
+            run_trial(slot, env_factory, policy, policy_factory=policy_factory, score_fn=scorer)
+        )
 
     score_records = [
         {

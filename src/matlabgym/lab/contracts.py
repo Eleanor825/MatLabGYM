@@ -517,6 +517,21 @@ class RewardSpec:
     cost_weight: float = 0.0
     time_weight: float = 0.0
 
+    @classmethod
+    def sparse_goal(cls, **overrides) -> "RewardSpec":
+        values = {"version": "execution-sparse-v1", "completed": 0.0, "stopped": 0.0}
+        values.update(overrides)
+        return cls(**values)
+
+    @classmethod
+    def cost_aware(cls, **overrides) -> "RewardSpec":
+        values = {
+            "version": "execution-cost-aware-v1", "completed": 0.0, "stopped": 0.0,
+            "cost_weight": 0.001, "time_weight": 0.0,
+        }
+        values.update(overrides)
+        return cls(**values)
+
     def __post_init__(self) -> None:
         _require_identifier("version", self.version)
         for name in ("accepted", "completed", "invalid", "stopped", "goal"):

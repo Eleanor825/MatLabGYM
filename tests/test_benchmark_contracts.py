@@ -145,19 +145,11 @@ class BenchmarkContractTests(unittest.TestCase):
         )
         payload = oracle.measure("A", 30).to_dict()
         json.dumps(payload, allow_nan=False)
-        task = type(
-            "Task",
-            (),
-            {
-                "task_id": "sparse",
-                "goal": "find",
-                "budget": 1,
-                "max_steps": 1,
-                "required_target": 0.0,
-            },
-        )()
+        from matlabgym.core import TaskSpec
+
+        task = TaskSpec("sparse", "find", budget=1, max_steps=1, required_target=0.0)
         env = ElectrolyteReplayEnv(task, oracle, temperature_c=30)
-        self.assertEqual(env.observe().public_state["support_size"], 2)
+        self.assertEqual(env.observe().public_state["support_size"], 1)
         self.assertEqual(len(env.available_actions()), 1)
         evaluation = env.evaluate()
         self.assertEqual(evaluation["support_size"], 1)

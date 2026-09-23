@@ -4,6 +4,11 @@
 
 This framework turns a laboratory capability inventory into a verifiable agent environment. The first domain implements the six-stage electrolyte line from the interface template. It is an execution simulator, not a materials-performance oracle.
 
+The [six-stage Operation Inventory](electrolyte_operation_inventory.md) records
+current contracts and pending platform decisions. The
+[Interface Acceptance Checklist](electrolyte_interface_acceptance.md) separates
+existing simulator regression coverage from required physical-platform evidence.
+
 ## Paper-to-framework mapping
 
 The χDL paper separates a portable procedure from a platform graph and compilation/execution. MatLabGYM preserves that architectural boundary and adds an episode layer:
@@ -83,7 +88,10 @@ All commands return the same shape:
 }
 ```
 
-This covers the template's required lab ID, ETA, total cost, success, and failure reason while adding stable error codes and retry semantics.
+This supplies simulated job/artifact IDs, logical ETA, configured total cost,
+success and failure reason, with stable error codes and retry semantics.
+Mapping these IDs to physical laboratory entities and verifying time/cost sources
+remain platform-integration work. An accepted job has no completed output artifact yet.
 
 ## State machine
 

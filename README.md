@@ -2,6 +2,12 @@
 
 MatLabGYM is a verifiable environment framework for materials-research agents. It combines a hardware-independent protocol layer, platform compilation, deterministic asynchronous execution, and a Gym-style episode interface.
 
+Version `0.4` adds a [uniform environment API](docs/uniform_api.md) across planning,
+lab execution, direct replay and a runnable [electrolyte screening loop](docs/electrolyte_scenario.md).
+The screening task connects completed mixing/characterization jobs to frozen conductivity
+measurements, sample lineage, query-budget reservations and configurable rewards.
+See the [Roadmap](docs/roadmap.md) and [TODO](docs/TODO.md) for delivery gates and concrete tasks.
+
 Version `0.2` includes a runnable six-stage electrolyte production-line simulation based on the internal `MATLABGYM LAB` interface template:
 
 ```text
@@ -38,7 +44,21 @@ The framework keeps four concepts separate:
 See [Framework Architecture](docs/framework.md) for the complete contracts and extension path.
 See the [meeting whiteboard redraw](docs/figures/README.md) for the six-stage
 electrolyte flow and discussion points, with editable LaTeX/TikZ, PDF and PNG.
+For platform review, use the six-stage
+[Operation Inventory](docs/electrolyte_operation_inventory.md) and
+[Interface Acceptance Checklist](docs/electrolyte_interface_acceptance.md).
+They separate implemented simulation behavior from unconfirmed physical controls,
+sample states, parameter limits and cost/time sources.
 See [Literature Traceability](docs/literature_traceability.md) for the paper-to-contract audit and the current paper-readiness boundary.
+See [Scientific Gym Rewards](docs/scientific_gym_rewards.md) for a source-verified
+comparison of ChemGymRL, ScienceWorld and BoxingGym, and
+[Reward Design](docs/reward_design.md) for the implemented reward presets.
+
+Version `0.3` adds designer-configurable replay rewards, component-level reward
+traces, replay-environment cohort support, slot/task/budget validation and a
+per-trial policy factory. `ElectrolyteReplayEnv.reset()` now returns `(obs, info)`;
+its trace schema is version 2 and its default reward is best-observed improvement
+plus a target bonus. Historical v0.2 replay returns/traces are not interchangeable.
 
 ## Quick start
 
@@ -51,6 +71,8 @@ python -m pip install -e .
 
 python -m matlabgym.demo --seed 7
 python examples/run_electrolyte_line.py
+python examples/compare_rewards.py --output /tmp/matlabgym-reward-comparison.json
+python examples/run_electrolyte_screening.py --output /tmp/electrolyte-screening
 python -m unittest discover -s tests -v
 ```
 
@@ -146,6 +168,7 @@ The reward version and full configuration are included in the environment manife
 
 - `PlanningEnv`: deterministic five-stage workflow fixture retained for API compatibility.
 - `ElectrolyteReplayEnv`: discrete conductivity replay/fixture environment for evidence-driven decisions.
+- `ElectrolyteEnv`: asynchronous mixing and characterization with delayed replay measurements and query-budget reservations.
 - `LabGymEnv`: protocol compiler and asynchronous execution framework.
 - `build_electrolyte_line_env`: executable orchestration reference for the six-stage interface template.
 

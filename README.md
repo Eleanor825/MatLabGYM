@@ -36,6 +36,8 @@ The framework keeps four concepts separate:
 - **Reward**: a versioned benchmark configuration. It is intentionally not scientific ground truth and can be replaced without changing the environment dynamics.
 
 See [Framework Architecture](docs/framework.md) for the complete contracts and extension path.
+See the [meeting whiteboard redraw](docs/figures/README.md) for the six-stage
+electrolyte flow and discussion points, with editable LaTeX/TikZ, PDF and PNG.
 See [Literature Traceability](docs/literature_traceability.md) for the paper-to-contract audit and the current paper-readiness boundary.
 
 ## Quick start

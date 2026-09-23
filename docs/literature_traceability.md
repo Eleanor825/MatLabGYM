@@ -16,7 +16,7 @@ readiness record, not a claim that MatLabGYM reproduces any cited benchmark.
 | Polat et al., [STEMGym](https://arxiv.org/abs/2606.29592), official [repository](https://github.com/KurbanIntelligenceLab/STEMGym) | 15 physics-simulated STEM worlds, hard irreversible dose budgets and DEC-AUC information-cost curves; analyst and navigator are evaluated separately. | Hard sample/time/resource budgets, anytime information-cost curves and decoupled perception/planning components. | Not implemented. |
 | Gandhi et al., [BoxingGym](https://arxiv.org/abs/2501.01540), official [repository](https://github.com/kanishkg/boxing-gym) | Ten generative probabilistic environments with exact generative models, EIG and model-discovery evaluation. | EIG is permitted only for an explicit generative model with likelihood/posterior; historical replay reports regret and sample efficiency instead. | Replay boundary is documented; no generative oracle is included. |
 | Gu et al., [BLADE](https://arxiv.org/abs/2408.09667), official [repository](https://github.com/behavioral-data/BLADE) | Multiple valid data analyses matched to expert decisions with precision/coverage metrics and execution errors counted. | Multi-path/facet evaluator instead of exact-match or a single LLM judge. | No data-analysis evaluator yet. |
-| Chen et al., [ScienceAgentBench](https://arxiv.org/abs/2410.05080), official [repository](https://github.com/OSU-NLP-Group/ScienceAgentBench) | 102 executable tasks from 44 papers, expert validation, standalone program artifacts, execution/scientific/cost metrics and contamination controls. | Artifact-first evaluation, execution validity separate from scientific outcome, cost and split provenance. | Manifest and trace contracts exist; no scientific task corpus or runner. |
+| Chen et al., [ScienceAgentBench](https://arxiv.org/abs/2410.05080), official [repository](https://github.com/OSU-NLP-Group/ScienceAgentBench) | 102 executable tasks from 44 papers, expert validation, standalone program artifacts, execution/scientific/cost metrics and contamination controls. | Artifact-first evaluation, execution validity separate from scientific outcome, cost and split provenance. | Manifest, trace and execution-only cohort contracts exist; no scientific task corpus or scientific evaluator runner. |
 | Shen et al., [SciAgentGym](https://arxiv.org/abs/2602.12984), official [repository](https://github.com/CMarsRover/SciAgentGYM) | Typed multi-step scientific tools, isolated filesystem/database/Python execution, fixed-seed structured traces, recovery and path-efficiency metrics. | Typed tool protocol, immutable traces, isolated workspace and recovery/loop metrics. | In-memory deterministic runtime only; no process/network sandbox. |
 | Jansen et al., [DISCOVERYWORLD](https://arxiv.org/abs/2406.06769), official [repository](https://github.com/allenai/discoveryworld) | Parametric hidden worlds, hypothesis-to-experiment-to-conclusion tasks, process metrics and explanatory-knowledge metrics. | Hidden task variants, partial process scoring and long-horizon replanning. | No discovery-world task generator. |
 | Debenedetti et al., [AgentDojo](https://arxiv.org/abs/2406.13352), official [repository](https://github.com/ethz-spylab/agentdojo) | Stateful tools with untrusted observations, attacker-goal cross-products and separate benign utility/security metrics. | Treat notebooks, comments, files and tool returns as untrusted; report utility, utility-under-attack, attack success and scientific success separately. | No adversarial sandbox or attack executor yet. |
@@ -51,15 +51,17 @@ The repository is an **execution-only benchmark substrate**. It currently has:
 - fail-closed `OracleCard`, split, perturbation and benchmark-manifest contracts;
 - explicit measured-support handling for sparse CSV replay and replicate rows;
 - endpoint evidence with an honest physical-start/scientific-validation boundary;
-- deterministic score summaries and 45 regression tests.
+- deterministic execution-only score summaries with cluster bootstrap, a fixed-slot
+  cohort runner, synthetic paired stress summaries and 51 regression tests.
 
 It does **not** yet have:
 
 - a 45-workstation/32-task LabBench-compatible corpus;
-- model x harness trial matrix, slot replacement and fixed-denominator cohort runner;
-- actual perturbation operators or prompt-injection sandbox;
+- model x harness trial matrix and slot replacement;
+- real-failure perturbation operators or prompt-injection sandbox;
 - calibrated electrolyte, CALPHAD or PyBaMM scientific oracle;
-- expert N10 adjudication, R1-R6 scoring, judge agreement or task-cluster bootstrap;
+- expert N10 adjudication, R1-R6 scoring or judge agreement. Cluster bootstrap
+  exists only for execution-only cohort scores, not for scientific adjudication;
 - real dispatch/start/completion telemetry or sim-to-real evidence;
 - a benchmark claim admission artifact with validated oracle, implemented stress
   suite and frozen train/dev/test data.
@@ -73,11 +75,12 @@ an established materials-discovery benchmark and not a reproduction of LabBench.
 1. Freeze and license a first real replay dataset; publish an OracleCard with a
    grouped split, support mask, replicate policy, uncertainty semantics and
    calibration report.
-2. Implement paired perturbation operators and an attack sandbox, then require
-   `BenchmarkManifest.assert_benchmark_ready` before reporting scientific scores.
-3. Add a cohort runner with fixed trial slots, retained failures, per-task
-   endpoint records, baseline policies (random, greedy, BO where valid) and
-   task-cluster bootstrap confidence intervals.
+2. Extend the synthetic paired operators to real failure replay and an attack
+   sandbox; require `BenchmarkManifest.assert_benchmark_ready` before reporting
+   scientific scores.
+3. Add model x harness slot materialization, slot replacement, per-task endpoint
+   records, baseline policies (random, greedy, BO where valid) and task-cluster
+   bootstrap confidence intervals on top of the execution-only runner.
 4. Add an independent evaluator for scientific outcome, execution evidence,
    resource cost and security side effects. Keep all four axes separate.
 5. Only after those gates, add AlloyEnv or CellEnv and run simulator-to-real

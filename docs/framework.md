@@ -155,6 +155,9 @@ being reported as a materials result.
   manifest, before/after snapshots, result payloads, endpoint evidence, rewards,
   terminal flags and state hashes. It is not a stochastic replay engine and it
   does not prove physical start or scientific validity.
-- The current stress suite is declarative metadata only; perturbation operators,
-  paired stress runs, hidden holdouts and adversarial sandboxing remain future
+- `matlabgym.runner` provides fixed-slot execution-only cohort runs and retains
+  unscorable/runner-failed slots as zero-score denominator entries. `matlabgym.stress`
+  provides explicitly synthetic paired invalid-action, duplicate-action and
+  time-delay operators with pair-level delta summaries. Real failure replay,
+  hidden holdouts, scientific evaluators and adversarial sandboxing remain future
   work.

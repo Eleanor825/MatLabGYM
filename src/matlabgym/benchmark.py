@@ -46,6 +46,12 @@ class OracleStatus(str, Enum):
     VALIDATED = "validated"
 
 
+class ClaimProfile(str, Enum):
+    EXECUTION_ONLY = "execution_only"
+    SCIENTIFIC_BENCHMARK = "scientific_benchmark"
+    PHYSICAL_DEPLOYMENT = "physical_deployment"
+
+
 @dataclass(frozen=True)
 class OracleCard:
     """Evidence card required before an oracle can support a scientific claim."""
@@ -186,6 +192,7 @@ class PerturbationSpec:
     parameters: Mapping[str, Any] = field(default_factory=dict)
     paired_base_id: Optional[str] = None
     implemented: bool = False
+    operator_hash: str = "unregistered"
 
     def __post_init__(self) -> None:
         for name in ("perturbation_id", "family", "source"):
@@ -201,6 +208,8 @@ class PerturbationSpec:
             raise ValueError("paired_base_id must be a string or null")
         if not isinstance(self.implemented, bool):
             raise ValueError("implemented must be a boolean")
+        if not isinstance(self.operator_hash, str) or not self.operator_hash.strip():
+            raise ValueError("operator_hash must be a non-empty string")
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -211,6 +220,7 @@ class PerturbationSpec:
             "parameters": dict(self.parameters),
             "paired_base_id": self.paired_base_id,
             "implemented": self.implemented,
+            "operator_hash": self.operator_hash,
         }
 
 
@@ -246,10 +256,10 @@ class StressSuite:
         )
 
     def assert_implemented(self) -> None:
-        if self.implementation_status != "implemented":
-            raise ValueError(
-                "stress suite is declarative; perturbation operators are not implemented"
-            )
+        if self.implementation_status != "implemented" or any(
+            item.operator_hash == "unregistered" for item in self.perturbations
+        ):
+            raise ValueError("stress suite is declarative or missing operator attestations")
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -327,6 +337,214 @@ class TrialEndpoints:
 
 
 @dataclass(frozen=True)
+class TrialSlot:
+    """One pre-registered denominator slot in a cohort evaluation."""
+
+    slot_id: str
+    benchmark_manifest_hash: str
+    task_id: str
+    task_group: str
+    seed: int
+    replicate_id: int
+    method_id: str
+    perturbation_id: str = "none"
+    budget_spec: Mapping[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        for name in (
+            "slot_id",
+            "benchmark_manifest_hash",
+            "task_id",
+            "task_group",
+            "method_id",
+            "perturbation_id",
+        ):
+            value = getattr(self, name)
+            if not isinstance(value, str) or not value.strip():
+                raise ValueError("%s must be a non-empty string" % name)
+        if isinstance(self.seed, bool) or not isinstance(self.seed, int):
+            raise ValueError("seed must be an integer")
+        if (
+            isinstance(self.replicate_id, bool)
+            or not isinstance(self.replicate_id, int)
+            or self.replicate_id < 0
+        ):
+            raise ValueError("replicate_id must be a non-negative integer")
+        if not isinstance(self.budget_spec, Mapping):
+            raise ValueError("budget_spec must be an object")
+        stable_hash(self.budget_spec)
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "slot_id": self.slot_id,
+            "benchmark_manifest_hash": self.benchmark_manifest_hash,
+            "task_id": self.task_id,
+            "task_group": self.task_group,
+            "seed": self.seed,
+            "replicate_id": self.replicate_id,
+            "method_id": self.method_id,
+            "perturbation_id": self.perturbation_id,
+            "budget_spec": dict(self.budget_spec),
+        }
+
+
+@dataclass(frozen=True)
+class EpisodeOutcome:
+    """Episode-level evidence; physical/scientific endpoints stay separate."""
+
+    logical_plan_materialized: bool
+    logical_dispatch_verified: bool
+    logical_completed: bool
+    physical_started: bool
+    physical_completed: bool
+    scientifically_validated: bool
+    goal_reached: bool
+    failure_categories: Tuple[str, ...]
+    total_reward: float
+    logical_time_min: float
+    total_cost: float
+    artifact_refs: Tuple[str, ...]
+    physical_evidence_source: Optional[str] = None
+    scientific_evidence_source: Optional[str] = None
+
+    def __post_init__(self) -> None:
+        for name in (
+            "logical_plan_materialized",
+            "logical_dispatch_verified",
+            "logical_completed",
+            "physical_started",
+            "physical_completed",
+            "scientifically_validated",
+            "goal_reached",
+        ):
+            if not isinstance(getattr(self, name), bool):
+                raise ValueError("%s must be a boolean" % name)
+        if self.physical_started or self.physical_completed:
+            if not self.physical_evidence_source or not self.physical_evidence_source.strip():
+                raise ValueError("physical endpoints require authoritative evidence")
+        if self.scientifically_validated:
+            if not self.scientific_evidence_source or not self.scientific_evidence_source.strip():
+                raise ValueError("scientific validation requires evaluator evidence")
+        if not isinstance(self.failure_categories, tuple) or not all(
+            isinstance(item, str) and item.strip() for item in self.failure_categories
+        ):
+            raise ValueError("failure_categories must be a tuple of strings")
+        if not is_finite_number(self.total_reward) or not is_finite_number(self.logical_time_min):
+            raise ValueError("reward and logical time must be finite")
+        if not is_finite_number(self.total_cost) or self.total_cost < 0:
+            raise ValueError("total_cost must be finite and non-negative")
+        if not isinstance(self.artifact_refs, tuple) or not all(
+            isinstance(item, str) and item.strip() for item in self.artifact_refs
+        ):
+            raise ValueError("artifact_refs must be a tuple of strings")
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "logical_plan_materialized": self.logical_plan_materialized,
+            "logical_dispatch_verified": self.logical_dispatch_verified,
+            "logical_completed": self.logical_completed,
+            "physical_started": self.physical_started,
+            "physical_completed": self.physical_completed,
+            "scientifically_validated": self.scientifically_validated,
+            "goal_reached": self.goal_reached,
+            "failure_categories": list(self.failure_categories),
+            "total_reward": self.total_reward,
+            "logical_time_min": self.logical_time_min,
+            "total_cost": self.total_cost,
+            "artifact_refs": list(self.artifact_refs),
+            "physical_evidence_source": self.physical_evidence_source,
+            "scientific_evidence_source": self.scientific_evidence_source,
+        }
+
+
+@dataclass(frozen=True)
+class TrialOutcome:
+    slot: TrialSlot
+    status: str
+    score: float
+    outcome: EpisodeOutcome
+    trace: Tuple[Mapping[str, Any], ...]
+    attempt_id: str = "attempt-0001"
+    parent_attempt_id: Optional[str] = None
+    failure_reason: Optional[str] = None
+
+    def __post_init__(self) -> None:
+        if self.status not in {
+            "retained",
+            "unscorable",
+            "runner_failed",
+            "infra_failed",
+            "scientific_failed",
+        }:
+            raise ValueError("unsupported trial status: %s" % self.status)
+        if not is_finite_number(self.score):
+            raise ValueError("trial score must be finite")
+        if self.status != "retained" and self.score != 0.0:
+            raise ValueError("unscorable trial scores must be zero")
+        if not isinstance(self.trace, tuple):
+            raise ValueError("trace must be a tuple")
+        if not isinstance(self.attempt_id, str) or not self.attempt_id.strip():
+            raise ValueError("attempt_id must be a non-empty string")
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "slot": self.slot.to_dict(),
+            "status": self.status,
+            "score": self.score,
+            "outcome": self.outcome.to_dict(),
+            "trace": [dict(item) for item in self.trace],
+            "attempt_id": self.attempt_id,
+            "parent_attempt_id": self.parent_attempt_id,
+            "failure_reason": self.failure_reason,
+        }
+
+
+@dataclass(frozen=True)
+class CohortResult:
+    method_id: str
+    n_assigned: int
+    n_retained: int
+    n_unscorable: int
+    outcomes: Tuple[TrialOutcome, ...]
+    score_summary: Mapping[str, Any]
+    endpoint_summary: Mapping[str, Any]
+    status_counts: Mapping[str, int] = field(default_factory=dict)
+    conditional_n: int = 0
+
+    def __post_init__(self) -> None:
+        if self.n_assigned != len(self.outcomes):
+            raise ValueError("n_assigned must equal retained outcome records")
+        if self.n_retained + self.n_unscorable != self.n_assigned:
+            raise ValueError("cohort counts must partition the fixed denominator")
+        if len({item.slot.slot_id for item in self.outcomes}) != self.n_assigned:
+            raise ValueError("cohort outcomes must contain one record per slot")
+        if any(item.slot.method_id != self.method_id for item in self.outcomes):
+            raise ValueError("cohort outcome method does not match method_id")
+        if self.conditional_n < 0 or self.conditional_n > self.n_assigned:
+            raise ValueError("conditional_n must lie within the fixed denominator")
+        if self.conditional_n != self.n_retained:
+            raise ValueError("conditional_n must equal the retained outcome count")
+        derived_status_counts: Dict[str, int] = {}
+        for item in self.outcomes:
+            derived_status_counts[item.status] = derived_status_counts.get(item.status, 0) + 1
+        if dict(self.status_counts) != derived_status_counts:
+            raise ValueError("status_counts must match retained outcome records")
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "method_id": self.method_id,
+            "n_assigned": self.n_assigned,
+            "n_retained": self.n_retained,
+            "n_unscorable": self.n_unscorable,
+            "outcomes": [item.to_dict() for item in self.outcomes],
+            "score_summary": dict(self.score_summary),
+            "endpoint_summary": dict(self.endpoint_summary),
+            "status_counts": dict(self.status_counts),
+            "conditional_n": self.conditional_n,
+        }
+
+
+@dataclass(frozen=True)
 class FunnelSummary:
     denominator: int
     counts: Mapping[str, int]
@@ -364,7 +582,7 @@ class BenchmarkManifest:
     budget_spec: Mapping[str, Any]
     stress_suite_hash: str
     code_version: str
-    claim_status: str = "execution_only"
+    claim_status: str = ClaimProfile.EXECUTION_ONLY.value
 
     def __post_init__(self) -> None:
         for name in (
@@ -421,7 +639,11 @@ class BenchmarkManifest:
         if stress_suite.suite_hash != self.stress_suite_hash:
             raise ValueError("stress suite hash does not match manifest")
         stress_suite.assert_implemented()
-        if self.claim_status != "scientific_benchmark":
+        if self.claim_status == ClaimProfile.PHYSICAL_DEPLOYMENT.value:
+            raise ValueError(
+                "physical_deployment admission requires real-lab telemetry and is unsupported"
+            )
+        if self.claim_status != ClaimProfile.SCIENTIFIC_BENCHMARK.value:
             raise ValueError("manifest is not authorized for a scientific benchmark claim")
 
 
@@ -467,6 +689,55 @@ def summarize_scores(
         "n": len(values),
         "mean": mean(values),
         "std": stdev(values) if len(values) > 1 else 0.0,
+        "bootstrap_ci95": [low, high],
+        "bootstrap_samples": bootstrap_samples,
+        "bootstrap_seed": seed,
+    }
+
+
+def summarize_clustered_scores(
+    records: Sequence[Mapping[str, Any]],
+    *,
+    cluster_key: str = "task_group",
+    score_key: str = "score",
+    bootstrap_samples: int = 2000,
+    seed: int = 0,
+) -> Dict[str, Any]:
+    """Summarize fixed-denominator scores with cluster bootstrap.
+
+    Repeated seeds/replicates within one task group are resampled as a unit,
+    matching the dependency structure expected in benchmark reporting.
+    """
+    if not records:
+        raise ValueError("records must not be empty")
+    if (
+        isinstance(bootstrap_samples, bool)
+        or not isinstance(bootstrap_samples, int)
+        or bootstrap_samples <= 0
+    ):
+        raise ValueError("bootstrap_samples must be a positive integer")
+    grouped: Dict[str, list[float]] = {}
+    for record in records:
+        cluster = record.get(cluster_key)
+        score = record.get(score_key)
+        if not isinstance(cluster, str) or not cluster.strip() or not is_finite_number(score):
+            raise ValueError("records must contain a string cluster and finite score")
+        grouped.setdefault(cluster, []).append(float(score))
+    clusters = tuple(sorted(grouped))
+    cluster_means = [mean(grouped[key]) for key in clusters]
+    rng = random.Random(seed)
+    boot = [
+        mean(rng.choice(cluster_means) for _ in cluster_means) for _ in range(bootstrap_samples)
+    ]
+    boot.sort()
+    low = boot[int(0.025 * (len(boot) - 1))]
+    high = boot[int(0.975 * (len(boot) - 1))]
+    return {
+        "n_assigned": len(records),
+        "n_clusters": len(clusters),
+        "cluster_key": cluster_key,
+        "cluster_means": dict(zip(clusters, cluster_means)),
+        "mean": mean(cluster_means),
         "bootstrap_ci95": [low, high],
         "bootstrap_samples": bootstrap_samples,
         "bootstrap_seed": seed,

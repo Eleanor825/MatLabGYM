@@ -179,11 +179,11 @@ payload, endpoint evidence, reward, terminal flags and state hash. It is valid
 for this deterministic backend only; it is not evidence of physical start,
 scientific validation, or a LabBench reproduction.
 
-The benchmark contracts in `matlabgym.benchmark` are fail-closed metadata and
-admission scaffolding: `OracleCard`, grouped `DatasetSplit`, `StressSuite`,
-`BenchmarkManifest`, endpoint records and bootstrap summaries. The bundled
-stress suite has no perturbation executor, the fixture has no calibrated
-scientific oracle, and no scientific benchmark claim is admitted by default.
+The benchmark layer includes fail-closed admission contracts, a fixed-slot
+execution-only cohort runner, and synthetic paired operators for invalid-action,
+duplicate-action and time-delay stress cases. The fixture has no calibrated
+scientific oracle, no real-failure operator or prompt-injection sandbox, and no
+scientific benchmark claim is admitted by default.
 
 ## Real-lab adapter boundary
 
@@ -207,6 +207,9 @@ The repository still contains no production laboratory connector or calibrated m
 The current implementation is an execution-only substrate. It does not claim
 to reproduce the robotic-chemistry stress test, its 45-workstation corpus,
 4,608-trial matrix, expert executable labels, or physical deployment results.
+The cohort runner and stress operators are synthetic execution tools; they do
+not provide real-failure evidence, scientific oracle outcomes, or physical
+start/completion telemetry.
 The literature-to-contract audit and the remaining gates are recorded in
 [`docs/literature_traceability.md`](docs/literature_traceability.md).
 

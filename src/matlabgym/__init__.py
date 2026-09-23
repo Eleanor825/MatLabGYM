@@ -1,5 +1,6 @@
 """MatLabGYM: verifiable environments for materials-science agents."""
 
+from .api import API_VERSION, ScientificEnv
 from .benchmark import (
     BenchmarkManifest,
     ClaimProfile,
@@ -21,10 +22,16 @@ from .benchmark import (
     summarize_scores,
 )
 from .core import Action, Observation, StepResult, TaskSpec
-from .domains import build_electrolyte_line_env, build_electrolyte_registry
+from .domains import (
+    ElectrolyteEnv,
+    ElectrolyteTask,
+    build_electrolyte_line_env,
+    build_electrolyte_registry,
+)
 from .electrolyte import ElectrolyteReplayEnv, make_fixture_task
 from .lab import LabGymEnv, LabRuntime, SkillRegistry
 from .planning import PlanningEnv
+from .rewards import ReplayRewardSpec
 from .runner import run_cohort, run_trial
 from .stress import (
     PairOutcome,
@@ -36,6 +43,10 @@ from .stress import (
 
 __all__ = [
     "Action",
+    "API_VERSION",
+    "ScientificEnv",
+    "ElectrolyteEnv",
+    "ElectrolyteTask",
     "BenchmarkManifest",
     "ClaimProfile",
     "CohortResult",
@@ -59,6 +70,7 @@ __all__ = [
     "LabGymEnv",
     "LabRuntime",
     "PlanningEnv",
+    "ReplayRewardSpec",
     "SkillRegistry",
     "build_electrolyte_line_env",
     "build_electrolyte_registry",

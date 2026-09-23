@@ -8,7 +8,7 @@ from typing import Any, Callable, Dict, Optional, Sequence
 
 from .benchmark import PerturbationSpec, TrialOutcome, TrialSlot, stable_hash
 from .core import Action
-from .runner import EnvFactory, Policy, ScoreFn, run_trial
+from .runner import EnvFactory, Policy, PolicyFactory, ScoreFn, _validate_policy_source, run_trial
 
 
 @dataclass(frozen=True)
@@ -180,13 +180,15 @@ def summarize_pairs(
     import random
 
     rng = random.Random(seed)
-    bootstrap_source = conditional_deltas or [0.0]
-    boot = sorted(
-        mean(rng.choice(bootstrap_source) for _ in bootstrap_source)
-        for _ in range(bootstrap_samples)
-    )
-    low = boot[int(0.025 * (len(boot) - 1))]
-    high = boot[int(0.975 * (len(boot) - 1))]
+
+    def interval(values):
+        if not values:
+            return None
+        boot = sorted(mean(rng.choice(values) for _ in values) for _ in range(bootstrap_samples))
+        return [boot[int(0.025 * (len(boot) - 1))], boot[int(0.975 * (len(boot) - 1))]]
+
+    conditional_ci = interval(conditional_deltas)
+    fixed_ci = interval(deltas)
     transitions: Dict[str, Dict[str, int]] = {}
     for pair in pairs:
         transitions.setdefault(pair.base.status, {})[pair.perturbed.status] = (
@@ -203,7 +205,10 @@ def summarize_pairs(
         "median_delta_conditional": median(conditional_deltas) if conditional_deltas else None,
         "mean_delta": mean(deltas),
         "median_delta": median(deltas),
-        "bootstrap_ci95": [low, high],
+        "bootstrap_ci95": conditional_ci,
+        "bootstrap_ci95_estimand": "mean_delta_conditional",
+        "bootstrap_ci95_conditional": conditional_ci,
+        "bootstrap_ci95_fixed_denominator": fixed_ci,
         "bootstrap_samples": bootstrap_samples,
         "bootstrap_seed": seed,
         "recovery_rate_conditional": (
@@ -219,18 +224,23 @@ def summarize_pairs(
 def run_paired_stress(
     case: StressCase,
     env_factory: EnvFactory,
-    policy: Policy,
+    policy: Optional[Policy] = None,
     *,
+    policy_factory: Optional[PolicyFactory] = None,
     score_fn: Optional[ScoreFn] = None,
 ) -> PairOutcome:
     """Run matched base/perturbed episodes with one seed and one budget."""
+    _validate_policy_source(policy, policy_factory)
     if case.perturbation.operator_hash != operator_attestation(case.perturbation):
         raise ValueError("operator hash does not match the registered implementation")
-    base = run_trial(case.base_slot, env_factory, policy, score_fn=score_fn)
+    base = run_trial(
+        case.base_slot, env_factory, policy, policy_factory=policy_factory, score_fn=score_fn
+    )
     perturbed = run_trial(
         case.perturbed_slot,
         env_factory,
         policy,
+        policy_factory=policy_factory,
         score_fn=score_fn,
         action_transform=_operator_for(case.perturbation),
     )

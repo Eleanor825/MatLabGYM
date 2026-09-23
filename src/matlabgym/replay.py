@@ -48,7 +48,19 @@ def verify_trace(
     """
 
     env = env_factory()
-    env.reset(seed=seed)
+    reset_count = trace[0].get("reset_count") if trace else None
+    if reset_count is not None:
+        if (isinstance(reset_count, bool) or not isinstance(reset_count, int)
+                or not 1 <= reset_count <= 10000 or not hasattr(env, "reset_count")):
+            return ReplayVerification(False, 0, 0, "invalid reset provenance")
+        if env.reset_count > reset_count:
+            return ReplayVerification(False, 0, 0, "factory has advanced past recorded reset")
+        while env.reset_count < reset_count:
+            env.reset(seed=seed)
+        if env.seed != seed:
+            return ReplayVerification(False, 0, 0, "reset seed mismatch")
+    else:
+        env.reset(seed=seed)
     for index, expected in enumerate(trace):
         try:
             required_fields = {
@@ -70,7 +82,10 @@ def verify_trace(
                 return ReplayVerification(False, index, index, "episode id mismatch")
             if expected["manifest_hash"] != env.manifest.manifest_hash:
                 return ReplayVerification(False, index, index, "manifest hash mismatch")
-            if _snapshot_hash(env.runtime.snapshot()) != _snapshot_hash(expected["before"]):
+            snapshot = (
+                env.public_snapshot() if hasattr(env, "public_snapshot") else env.observe().public_state
+            )
+            if _snapshot_hash(snapshot) != _snapshot_hash(expected["before"]):
                 return ReplayVerification(False, index, index, "before state mismatch")
             action = expected["action"]
             result = env.step(Action(str(action["name"]), dict(action.get("parameters") or {})))
@@ -87,8 +102,14 @@ def verify_trace(
                 return ReplayVerification(False, index + 1, index, "endpoint evidence mismatch")
             if result.info.get("state_hash") != stable_hash(expected_after):
                 return ReplayVerification(False, index + 1, index, "state hash mismatch")
+            if "info" in expected and stable_hash(result.info) != stable_hash(expected["info"]):
+                return ReplayVerification(False, index + 1, index, "info/provenance mismatch")
             if result.reward != expected["reward"]:
                 return ReplayVerification(False, index + 1, index, "reward mismatch")
+            if "reward_components" in expected and result.info.get("reward_components") != (
+                expected["reward_components"]
+            ):
+                return ReplayVerification(False, index + 1, index, "reward components mismatch")
             if result.terminated != expected["terminated"]:
                 return ReplayVerification(False, index + 1, index, "terminated mismatch")
             if result.truncated != expected["truncated"]:
@@ -100,6 +121,22 @@ def verify_trace(
 
 def endpoint_record_from_trace(trace: Mapping[str, Any]) -> TrialEndpoints:
     """Convert one environment trace into a fixed-denominator endpoint record."""
+    if "endpoint_evidence" in trace:
+        recorded = {item["endpoint"]: item for item in trace["endpoint_evidence"]}
+        return TrialEndpoints(
+            trace.get("episode_id", "unknown"),
+            tuple(
+                EndpointEvidence(
+                    endpoint,
+                    bool(recorded.get(endpoint.value, {}).get("present", False)),
+                    recorded.get(endpoint.value, {}).get("evidence_source", "not_recorded"),
+                    tuple(recorded.get(endpoint.value, {}).get("artifact_refs", ())),
+                    recorded.get(endpoint.value, {}).get("reason"),
+                )
+                for endpoint in EndpointName
+            ),
+            failure_category=trace.get("failure_category"),
+        )
     results = trace.get("results") or []
     statuses = {str(item.get("status")) for item in results if isinstance(item, Mapping)}
     produced = tuple(

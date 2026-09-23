@@ -1,6 +1,6 @@
 # MatLabGYM 路线图
 
-更新：2026-09-23。当前工作区已实现统一接口和可运行的电导率筛选闭环；本轮本地回归为 **95 tests 通过**，尚未合并 main 或发布正式版本。这是软件与模拟验收进展，真实平台测试报告尚未接入，不能据此认定物理执行或科学验证通过。
+更新：2026-09-23。当前工作区已实现统一接口和可运行的电导率筛选闭环；**95 tests、三策略示例重放及 Python 3.9 / 3.11 / 3.12 CI 通过**，已通过 [PR #2](https://github.com/Eleanor825/MatLabGYM/pull/2) 合并到 main；正式发行包尚未发布。这是软件与模拟验收进展，真实平台测试报告尚未接入，不能据此认定物理执行或科学验证通过。
 
 任务清单见 [TODO](TODO.md)。平台决策沿用 [Operation Inventory](electrolyte_operation_inventory.md) 的 DEC-01–09，验收沿用 [接口验收清单](electrolyte_interface_acceptance.md) 的 AC-01–20；本路线图不替代平台签认。阶段按退出条件推进，工期由负责角色在依赖明确后估计，不预设日期。
 
@@ -8,10 +8,10 @@
 
 **目标：** 让 agent 使用同一套动作、观测和结果契约，运行“选择配方 → 配液 → 表征 → 根据已观测结果再次选择”的有限预算任务。
 
-- **当前交付：本地已实现。** [ScientificEnv](../src/matlabgym/api.py) 统一 reset、step、observe、public_snapshot、action_specs、trace、evaluate 和 episode_outcome；公共 info 包含结果、奖励分解、来源和成本单位。[ElectrolyteEnv](../src/matlabgym/domains/electrolyte_screening.py) 将测量绑定到配液与表征完成后发布，提供支持域、测量预算及独立指标。
-- **策略与证据：本地已实现。** 公开顺序、独立随机种子和基于本 episode 已观测反馈的最近邻贪心基线；[CLI](../examples/run_electrolyte_screening.py) 保存 manifest、metrics、trace 及回放结果。本地 95 tests 和 Ruff 检查通过；同 seed reset 已通过 reset 序号隔离身份，strict replay 可还原序号并拒绝旧 episode 输入；CSV 非整数温度及非法 uncertainty 被拒绝。发布版本、CI 结果和平台报告仍待补齐。
+- **当前交付：已实现并合并 main。** [ScientificEnv](../src/matlabgym/api.py) 统一 reset、step、observe、public_snapshot、action_specs、trace、evaluate 和 episode_outcome；公共 info 包含结果、奖励分解、来源和成本单位。[ElectrolyteEnv](../src/matlabgym/domains/electrolyte_screening.py) 将测量绑定到配液与表征完成后发布，提供支持域、测量预算及独立指标。
+- **策略与证据：已实现并合并 main。** 公开顺序、独立随机种子和基于本 episode 已观测反馈的最近邻贪心基线；[CLI](../examples/run_electrolyte_screening.py) 保存 manifest、metrics、trace 及回放结果。本地 95 tests 和 Ruff 检查通过；同 seed reset 已通过 reset 序号隔离身份，strict replay 可还原序号并拒绝旧 episode 输入；CSV 非整数温度及非法 uncertainty 被拒绝。PR #2 的 CI 已通过；正式发行包和真实平台报告仍待补齐。
 - **依赖：** 冻结当前接口与 trace 版本，确认示例、序列化和失败行为一致。模拟默认耗时和容量保留明确来源，不等待真实参数即可开展软件验证。
-- **退出条件：** 从干净环境安装后执行统一接口测试、三策略示例及 trace 验证成功；验证已修复的同 seed reset 身份隔离，并记录跨 worker 命名空间边界；将代码、测试命令、配置和产物绑定到可审查的 PR/提交，CI 通过后按发布流程交付。以上发布退出条件尚未全部完成。
+- **退出条件：** 从干净环境安装后执行统一接口测试、三策略示例及 trace 验证成功；验证已修复的同 seed reset 身份隔离，并记录跨 worker 命名空间边界；将代码、测试命令、配置和产物绑定到可审查的 PR/提交，CI 通过后按发布流程交付。软件验证与合并条件已完成；正式发行包发布仍待完成。
 
 **边界：** 电导率闭环只有 S1 配液与 S2 表征。已有六阶段产线模拟覆盖 S1–S6 的执行顺序，但最终 cell_test_report 仍是元数据产物，未接入真实电池测试曲线或性能报告。S2 电导率达到阈值不表示 S6 电池性能达标。后续两类任务应保持独立 task ID、目标和验收标准。
 

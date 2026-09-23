@@ -2,6 +2,8 @@
 
 更新：2026-09-23。当前工作区已实现统一接口和可运行的电导率筛选闭环；**95 tests、三策略示例重放及 Python 3.9 / 3.11 / 3.12 CI 通过**，已通过 [PR #2](https://github.com/Eleanor825/MatLabGYM/pull/2) 合并到 main；正式发行包尚未发布。这是软件与模拟验收进展，真实平台测试报告尚未接入，不能据此认定物理执行或科学验证通过。
 
+**当前阶段：M0 工程原型完成，M1 准备中。** M1 的清单与接口草案已整理，平台签认和真实数据接入尚未完成；M2–M4 尚未开展。README 提供[可勾选的阶段清单](../README.md#roadmap)。
+
 任务清单见 [TODO](TODO.md)。平台决策沿用 [Operation Inventory](electrolyte_operation_inventory.md) 的 DEC-01–09，验收沿用 [接口验收清单](electrolyte_interface_acceptance.md) 的 AC-01–20；本路线图不替代平台签认。阶段按退出条件推进，工期由负责角色在依赖明确后估计，不预设日期。
 
 ## M0：统一接口与可运行电导率闭环

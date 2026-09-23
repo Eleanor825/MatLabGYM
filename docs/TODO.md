@@ -1,10 +1,10 @@
 # MatLabGYM TODO
 
-更新：2026-09-23；对应 [路线图](roadmap.md)。TASK ID 保持稳定，不随优先级或顺序调整而重编号。`[x]` 仅表示所写范围完成；“本地/模拟”不表示已发布、平台验收通过或科学验证通过。负责角色为建议，尚未指派真实人员。
+更新：2026-09-23；对应 [路线图](roadmap.md)。当前处于 **M0 工程原型完成、M1 准备中**；代码已通过 [PR #2](https://github.com/Eleanor825/MatLabGYM/pull/2) 合并 main，95 项测试与多 Python 版本 CI 通过。TASK ID 保持稳定，不随优先级或顺序调整而重编号。`[x]` 仅表示所写范围完成；“本地/模拟”不表示已发布、平台验收通过或科学验证通过。负责角色为建议，尚未指派真实人员。
 
 DEC 及 AC 的详细定义分别见 [决策清单](electrolyte_operation_inventory.md) 与 [验收清单](electrolyte_interface_acceptance.md)。当前九项 DEC 尚无平台确认记录；真实测试报告尚未接入。
 
-## 已完成的本地范围
+## 已完成并合并 main 的软件范围
 
 - [x] **TASK-001 · P0 · M0：统一公共环境接口（本地）。** 交付：ScientificEnv、公共结果/info、成本来源、public_snapshot 与独立 evaluate。通过条件：当前本地统一接口和回归测试通过；本轮共 95 tests。建议负责：环境工程。依赖：无平台 DEC 前置；后续按 AC-20 绑定发布版本。
 - [x] **TASK-002 · P0 · M0：S1–S2 电导率闭环（模拟）。** 交付：先配液后表征，完成后发布观测，预算/支持域/终止及 trace；三类策略与 CLI。通过条件：本地测量闭环及策略测试通过，产物可回放；仅 synthetic/unvalidated replay。建议负责：环境工程、算法工程。依赖：TASK-001；真实化依赖 DEC-01/04/08。
@@ -12,7 +12,7 @@ DEC 及 AC 的详细定义分别见 [决策清单](electrolyte_operation_invento
 
 ## P0：发布与真实数据/平台前置
 
-- [ ] **TASK-004 · M0：统一序列化、CI、PR 与发布。** 通过条件：Action/Observation/StepResult/info/trace 的 JSON 往返与版本兼容测试通过；干净安装后的全量 unittest、CLI、回放由 CI 执行；提交、manifest 和报告可追溯；PR 审查及发布流程完成。建议负责：维护者、环境工程。依赖：TASK-001/002/003、AC-20。
+- [ ] **TASK-004 · M0：统一序列化、CI、PR 与发布。** 当前进展：公共序列化、干净安装、95 项回归、三策略 CLI、严格重放及多 Python 版本 CI 已通过，PR #2 已合并；正式版本标签／发行包与版本说明尚未发布，因此此项保持未勾选。通过条件：Action/Observation/StepResult/info/trace 的 JSON 往返与版本兼容测试通过；干净安装后的全量 unittest、CLI、回放由 CI 执行；提交、manifest 和报告可追溯；PR 审查及发布流程完成。建议负责：维护者、环境工程。依赖：TASK-001/002/003、AC-20。
 - [x] **TASK-005 · P0 · M0：同 seed reset 身份隔离（本地）。** 已以 reset 序号建立 episode 命名空间，strict replay 还原 reset 序号；跨 episode 旧 artifact ID 被拒绝，相关回归通过。通过条件：本地重复 reset 与回放测试通过；此项不覆盖跨 worker 或跨进程恢复的全局身份，后续见 TASK-022。建议负责：runtime 工程。依赖：TASK-001、AC-09/14/20。
 - [ ] **TASK-006 · M1：真实数据来源、授权与 QC。** 通过条件：接入有来源版本和使用授权的电导率数据，保留仪器/校准、原始记录、重复测量、缺失/异常处理及 QC 标记；冻结导入和排除清单，失败记录不得当作有效性质。建议负责：数据负责人、测量/工艺负责人。依赖：DEC-08、AC-02/06/18；与 TASK-007 联合验收。
 - [ ] **TASK-007 · M1：真实 schema、单位与支持域。** 已本地验证：CSV 非整数温度不再静默取整，NaN/负 uncertainty 被拒绝。仍需通过：确认配方组分/浓度基准、温度、导电率等单位及范围，注册方法/协议版本、压力基准；给出支持配方/温度集合；域外与单位错误请求拒绝，复测有独立语义。建议负责：工艺负责人、数据工程。依赖：DEC-04/08、AC-01–06/11。
